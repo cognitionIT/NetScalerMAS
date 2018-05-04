@@ -1,0 +1,1193 @@
+--- 
+name: cit-sb-appl-config-ssl
+namespace: com.cognitionit.mas.stylebooks
+version: "2.01"
+display-name: "Synergy 2018 Stylebook - Create Full Application Network flow (Multiple Instances)"
+description: "This stylebook creates the entire network flow for one application across multiple NetScaler instances, based upon best practices and field experiences"
+schema-version: "1.0"
+author: "Esther Barthel, MSc"
+
+# Notes:
+# Added the default NetScaler HTTP Profiles to the selectbox (mostly for testing purposes)
+# Assumption: Global settings on the NetScaler are configured via a Configuration Job.
+#             - The bound maintenance page (backup vServer) is pre-created by the Configuration Job. The name of the backup lbvserver is known (hidden param of this Stylebook)
+#             - The required Responder policy and action for the HTTP to HTTPS redirection is pre-created by the Configuration Job. The name of the Responder policy is known (hidden param of this Stylebook)
+#             - The required Rewrite policies and actions for the HTTP Header security are pre-created by the Configuration Job. The name of the Rewrite policies are known (hidden params of this Stylebook)
+#             - The SSL profile for all (frontend) SSL vServers is pre-created by the Configuration Job. The name of the Frontend SSL profile is known (hidden param of this Stylebook)
+#             - The SSL profile for all (backend) SSL ServiceGroups is pre-created by the Configuration Job. The name of the Backend SSL profile is known (hidden param of this Stylebook)
+# The following prerequisites are pre-configured on the NetScaler instance:
+#             - WAF policy (AppFW vServer prerequisite) is pre-created (seperate StyleBook). This Stylebook only refers to an existing WAF policy name.
+#             - The SSL certificates for the NetScaler instances are managed via the NMAS SSL Dashboard (Networks - SSL Dashboard - Install button). This Stylebook only refers to existing certkey-pair names.
+
+import-stylebooks:
+  -
+    namespace: netscaler.nitro.config
+    prefix: ns
+    # The NetScaler version cannot exceed the minimum version of the current NetScaler version of the targeted instances
+    version: "12.0"
+
+parameters:
+  -
+    #################
+    # General input #
+    #################
+    name: general
+    type: object
+    label: "General Application configuration"
+    description: "General Application configuration input"
+    required: true
+    parameters:
+      -
+        # General input - Application name
+        name: appname
+        type: string
+        label: "Application name"
+        description: "Name of the Application. Naming conventions are automatically added to the NetScaler configuration."
+        # Parameter to push a name for the Configuration Pack and use that for future references
+        key: true
+        required: true
+        # default added for testing purposes, remove after POC
+        default: "Synergy18-Demo"
+      -
+        # General input - TCP profile name (optional)
+        name: tcp-profile
+        type: string
+        label: "TCP Profile name"
+        description: "Name of the TCP profile to use for the Application"
+        required: false
+        #default: "nstcp_default_profile"
+      -
+        # General input - SSL Profile Frontend (hidden in GUI)
+        name: sslprofile_fe
+        type: string
+        label: "Frontend SSL Profile name"
+        description: "Name of the SSL profile to bind to all the SSL vServers on the NetScaler instances"
+        default: "ns_default_ssl_profile_frontend"
+        gui:
+          hidden: true
+      -
+        # General input - SSL Profile Backend (hidden in GUI)
+        name: sslprofile_be
+        type: string
+        label: "Backend SSL Profile name"
+        description: "Name of the SSL profile to bind to all the SSL ServiceGroups on the NetScaler instances"
+        default: "ns_default_ssl_profile_backend"
+        gui:
+          hidden: true
+      -
+        # General input - Certificate (public)
+        name: pub-certkey-pair
+        type: string
+        label: "public Certificate-Key Pair name"
+        description: "public Certificate-Key Pair to bind to the Application on the SSL Offloading vServer"
+        # temp changed to false, while certificates are not yet installed on the NetScaler
+        #required: true
+      -
+        # General - Certificate (internal)
+        name: int-certkey-pair
+        type: string
+        label: "internal Certificate-Key Pair name"
+        description: "internal Certificate-Key Pair to bind to the Application Firewall, Presentation, Application, Resource and/or Tranfer vServer"
+        # temp changed to false, while certificates are not yet installed on the NetScaler
+        #required: true
+      -
+        # General input - Maintenance Page (hidden in GUI)
+        name: maintenance
+        type: string
+        label: "Maintenance Page resource"
+        description: "Name of the Backup LB vServer that is used as the maintenance page and bound to the SSL Offloading LB vServer"
+        default: "lb_vs_maintenance"
+        gui:
+          hidden: true
+      -
+        # General input - Responder policy HTTP_redirect (hidden in GUI)
+        name: res_pol_http_redirect
+        type: string
+        label: "Responder Policy for HTTP to HTTPS redirection"
+        description: "Responder Policy for HTTP to HTTPS redirection that will be bound to the SSL Offloading CS vServer"
+        #default: "ae_res_pol_http-https_redir"
+        default: "ae_res_pol_httpredirect"
+        gui:
+          hidden: true
+      -
+        # General input - Rewrite policy CSP HTTP Header (hidden in GUI)
+        name: csp-rewrite-policy
+        type: string
+        label: "Rewrite Policy for CSP HTTP Header"
+        description: "Rewrite Policy Content-Security-Policy HTTP Header for whitelisting of approved sources of content for your site."
+        default: "ae_rew_pol_header_CSP"
+        gui:
+          hidden: true
+      -
+        # General input - Rewrite policy HSTS HTTP Header (hidden in GUI)
+        name: hsts-rewrite-policy
+        type: string
+        label: "Rewrite Policy for HSTS HTTP Header"
+        description: "Rewrite Policy HTTP Strict Transport Security HTTP Header to tell a browser to always connect using HTTPS instead of HTTP."
+        default: "ae_rew_pol_HSTS"
+        gui:
+          hidden: true
+      -
+        # General input - Rewrite policy X-Frame-Options HTTP Header (hidden in GUI)
+        name: xframe-rewrite-policy
+        type: string
+        label: "Rewrite Policy for X-Frame-Options HTTP Header"
+        description: "Rewrite Policy X-Frame-Options HTTP Header to tell a browser to always connect using HTTPS instead of HTTP."
+        default: "ae_rew_pol_header_X-Frame-Options"
+        gui:
+          hidden: true
+      -
+        # General input - Rewrite policy X-XSS HTTP Header (hidden in GUI)
+        name: xxss-rewrite-policy
+        type: string
+        label: "Rewrite Policy for X-XSS HTTP Header"
+        description: "Rewrite Policy X-Xss-Protection HTTP Header to tell a browser to always connect using HTTPS instead of HTTP."
+        default: "ae_rew_pol_header_X-XSS"
+        gui:
+          hidden: true
+      -
+        # General input - Rewrite policy X-Content-Type-Options HTTP Header (hidden in GUI)
+        name: xcontenttype-rewrite-policy
+        type: string
+        label: "Rewrite Policy for X-Content-Type-Options HTTP Header"
+        description: "Rewrite Policy X-Content-Type-Options HTTP Header to tell a browser to always connect using HTTPS instead of HTTP."
+        default: "ae_rew_pol_header_X-Content-Type-Options"
+        gui:
+          hidden: true
+  -
+    ##################
+    # SSL-Offloading #
+    ##################
+    name: ssloffloading
+    type: object
+    label: "SSL-Offloading configuration"
+    description: "Configuration input for the SSL-Offloading vServer"
+    required: true
+    parameters:
+      -
+        # SSL-Offloading - Public IP-address
+        name: pip
+        type: ipaddress
+        label: "Public IP-address"
+        description: "Public IP-address of the Application"
+        required: true
+      -
+        # SSL-Offloading - HTTP Profile
+        name: http-profile
+        type: string
+        label: "HTTP Profile"
+        description: "HTTP Profile to bind to the SSL-Offloading vServer"
+        required: true
+        allowed-values:
+          - "nshttp_default_strict_validation"
+          - "nshttp_default_profile"
+        default: "nshttp_default_profile"
+  -
+    #########
+    # AppFW #
+    #########
+    name: appfw
+    type: object
+    label: "Application Firewall configuration"
+    description: "Configuration input for the Application Firewall vServer"
+    required: true
+    parameters:
+      -
+        # appFW - Virtual IP-address
+        name: vip
+        type: ipaddress
+        label: "Virtual IP-address"
+        description: "Virtual IP-address of the Application Firewall vServer"
+        required: true
+      -
+        # appFW - WAF Policy
+        name: policy
+        type: string
+        label: "WAF Policy Name"
+        description: "WAF Policy Name to bind to the Application Firewall vServer"
+        # temp changed to false, as the basic settings configuration job has not yet run
+        required: false
+      -
+        # appFW - HTTP Profile
+        name: http-profile
+        type: string
+        label: "HTTP Profile"
+        description: "HTTP Profile to bind to the Application Firewall vServer"
+        required: true
+        allowed-values:
+          - "nshttp_default_strict_validation"
+          - "nshttp_default_profile"
+        default: "nshttp_default_profile"
+  -
+    ################
+    # Presentation #
+    ################
+    name: presentation
+    type: object
+    label: "Presentation configuration"
+    description: "Configuration input for the Presentation vServer"
+    required: true
+    parameters:
+      -
+        # Presentation - Virtual IP-address
+        name: vip
+        type: ipaddress
+        label: "Virtual IP-address"
+        description: "Virtual IP-address of the Presentation vServer"
+        required: true
+      -
+        # Presentation - Virtual Port
+        name: port
+        type: tcp-port
+        label: "TCP Port"
+        description: "TCP port of the Presentation vServer"
+        required: true
+        default: 443
+      -
+        # Presentation - HTTP Profile
+        name: http-profile
+        type: string
+        label: "HTTP Profile"
+        description: "HTTP Profile to bind to the Presentation vServer"
+        required: true
+        allowed-values:
+          - "nshttp_default_strict_validation"
+          - "nshttp_default_profile"
+        default: "nshttp_default_profile"
+      -
+        # Presentation - Webservers
+        name: webservers
+        type: object
+        label: "Web servers configuration (optional)"
+        description: "Backend Web servers configuration"
+        required: false
+        parameters:
+          -
+            # Webserver - TCP port
+            name: tcp-port
+            type: tcp-port
+            label: "SSL port for the servicegroup"
+            description: "Specify the standard port of the servicegroup."
+            default: 443
+            required: true
+          -
+            name: servers
+            type: object[]
+            label: "Backend Webservers (optional)"
+            description: "Backup Web servers information"
+            parameters:
+              -
+                name: svr-name
+                label: "Web server Name"
+                description: "Name of the Web server"
+                type: string
+              -
+                name: svr-ip
+                label: "Web server IP-address"
+                description: "IP-address of the Web server"
+                type: ipaddress
+                required: true
+              -
+                name: svr-port
+                label: "Web server TCP port"
+                description: "TCP port of the Web server"
+                type: tcp-port
+              -
+                name: svr-exists
+                label: "Existing Backend Server"
+                description: "Select if the backend server already exist on the NetScaler and does not need to be created. Enter the known IP-address or name (without the lb_svr_ prefix) for any existing backend server in the name field."
+                type: string
+                allowed-values:
+                  - "Yes"
+                  - "No"
+                default: "No"
+                required: true
+          -
+            # Input param for the existing monitors to be bound to the vServer
+            name: monitors
+            label: "Bind existing Monitor(s) Name"
+            description: "Specify existing monitor(s) to bind to this vServer"
+            type: string[]
+            required: false
+          - 
+            # Input param for the new monitors to be bound to the vServer
+            name: new-monitors
+            label: "Add new Monitor(s) (optional)"
+            description: "Create new monitor(s) to bind to the vServer."
+            type: object[]
+            required: false
+            parameters:
+              -
+                name: monitorname
+                label: "Monitor Name"
+                description: "Name of the monitor"
+                type: string
+                required: true
+              -
+                name: type
+                label: "Monitor Type"
+                description: "Select the monitor type from the selectbox"
+                type: string
+                required: true
+                allowed-values:
+                  - "PING"
+                  - "TCP"
+                  - "HTTP"
+                  - "HTTP-ECV"
+                  - "TCP-ECV"
+              -
+                name: destip
+                label: "Destination IP"
+                description: "Destination IP to be monitored"
+                type: ipaddress
+              -
+                name: destport
+                label: "Destination Port"
+                description: "Destination Port to be monitored"
+                type: tcp-port
+              -
+                name: httprequest
+                label: "HTTP Request"
+                description: "HTTP Request to be send by the monitor"
+                type: string
+              -
+                name: send
+                label: "Send string (ECV monitor)"
+                description: "String to be send by the ECV monitor"
+                type: string
+              -
+                name: customheaders
+                label: "Custom HTTP Headers"
+                description: "custom HTTP Headers to be send in monitor probe requests"
+                type: string
+              -
+                name: respcode
+                label: "List of HTTP Status Response Code(s)"
+                description: "Expected HTTP Status Response Code(s) returned to the monitor"
+                type: string[]
+              -
+                name: recv
+                label: "Expected response"
+                description: "Expected HTTP Response returned to the monitor"
+                type: string
+              -
+                name: lrtm
+                label: "Enable LRTM mode for the monitor"
+                description: "Enable the Least-Response-Time (LRTM) mode for the monitor"
+                #type: string
+                #allowed-values:
+                #  - "ENABLED"
+                #  - "DISABLED"
+                type: boolean
+                default: true
+              -
+                name: secure
+                label: "Enable Secure mode for the monitor"
+                description: "Uses HTTPS for sending monitoring probes."
+                type: string
+                allowed-values:
+                  - "YES"
+                  - "NO"
+                default: "YES"
+                required: true
+  -
+    # Application
+    name: application
+    type: object
+    label: "Application servers configuration (optional)"
+    description: "Configuration input for the Application instance"
+    required: false
+    parameters:
+      -
+        # Application - Virtual IP-address
+        name: vip
+        type: ipaddress
+        label: "Virtual IP-address"
+        description: "Virtual IP-address for the Application vServer"
+        required: true
+      -
+        # Application - Virtual Port
+        name: port
+        type: tcp-port
+        label: "TCP Port"
+        description: "TCP port for the Application vServer"
+        required: true
+        default: 443
+      -
+        # Application - HTTP Profile
+        name: http-profile
+        type: string
+        label: "HTTP Profile"
+        description: "HTTP Profile to use on the Application NetScaler instance"
+        required: true
+        allowed-values:
+          - "nshttp_default_strict_validation"
+          - "nshttp_default_profile"
+        default: "nshttp_default_profile"
+      -
+        # Application - Servers
+        name: appservers
+        type: object
+        label: "Servers configuration (optional)"
+        description: "Servers configuration information"
+        required: false
+        parameters:
+          -
+            # Webserver - TCP port
+            name: tcp-port
+            type: tcp-port
+            label: "SSL port for the servicegroup"
+            description: "Specify the port for the servicegroup."
+            default: 443
+            required: true
+          -
+            name: servers
+            type: object[]
+            label: "Backend Servers"
+            description: "Backend Servers information"
+            parameters:
+              -
+                name: svr-name
+                label: "Server Name"
+                description: "Name of the server"
+                type: string
+              -
+                name: svr-ip
+                label: "Server IP-address"
+                description: "IP-address of the server"
+                type: ipaddress
+                required: true
+              -
+                name: svr-port
+                label: "Server TCP port"
+                description: "TCP port of the server"
+                type: tcp-port
+              -
+                name: svr-exists
+                label: "Existing Backend Server"
+                description: "Select if the backend server already exist on the NetScaler and does not need to be created. Enter the known IP-address or name (without the lb_svr_ prefix) for any existing backend server in the name field."
+                type: string
+                allowed-values:
+                  - "Yes"
+                  - "No"
+                default: "No"
+                required: true
+          -
+            # Input param for the existing monitors to be bound to the vServer
+            name: monitors
+            label: "Add existing Monitor Name"
+            description: "List of existing monitors to bind to this vServer"
+            type: string[]
+            required: false
+          - 
+            # Input param for the new monitors to be bound to the vServer
+            name: new-monitors
+            label: "Add new Monitor(s)"
+            description: "Create a new monitor that will be bound to the vServer."
+            type: object[]
+            required: false
+            parameters:
+              -
+                name: monitorname
+                label: "Monitor Name"
+                description: "Name of the monitor"
+                type: string
+                required: true
+              -
+                name: type
+                label: "Monitor Type"
+                description: "Type of the monitor"
+                type: string
+                required: true
+                allowed-values:
+                  - PING
+                  - TCP
+                  - HTTP
+                  - HTTP-ECV
+                  - TCP-ECV
+              -
+                name: destip
+                label: "Destination IP"
+                description: "Destination IP to be monitored"
+                type: ipaddress
+              -
+                name: destport
+                label: "Destination Port"
+                description: "Destination Port to be monitored"
+                type: tcp-port
+              -
+                name: httprequest
+                label: "HTTP Request"
+                description: "HTTP Request sent by the monitor"
+                type: string
+              -
+                name: send
+                label: "Send String"
+                description: "String sent by the ECV monitor"
+                type: string
+              -
+                name: customheaders
+                label: "Custom HTTP Headers"
+                description: "custom HTTP Headers to send in monitor probe requests"
+                type: string
+              -
+                name: respcode
+                label: "List of HTTP Status Response Code"
+                description: "Expected HTTP Status Response Code"
+                type: string[]
+              -
+                name: recv
+                label: "Expected Response"
+                description: "HTTP Response expected back by the monitor"
+                type: string
+              -
+                name: lrtm
+                label: "Enable LRTM mode for the monitor"
+                description: "Enables the Least-Response-Time mode for the monitor used for load-balancing."
+                type: string
+                allowed-values:
+                  - "ENABLED"
+                  - "DISABLED"
+              -
+                name: secure
+                label: "Enable Secure mode for the monitor"
+                description: "Uses HTTPS for sending monitoring probes."
+                type: string
+                allowed-values:
+                  - "YES"
+                  - "NO"
+                default: "YES"
+
+target-roles:
+  -
+    name: "SSLOffloading"
+    label: "SSL Offloading instance"
+    min-targets: 1
+    max-targets: 1
+  -
+    name: "ApplicationFirewall"
+    label: "Application Firewall instance"
+    min-targets: 1
+    max-targets: 1
+  -
+    name: "Presentation"
+    label: "Presentation instance"
+    min-targets: 1
+    max-targets: 1
+  -
+    name: "Application"
+    label: "Application instance"
+    min-targets: 0
+    max-targets: 1
+
+components:
+  ##################################
+  ##### SSL Offloading section #####
+  ##################################
+  -
+    # enabling the required NS features
+    name: ssloffloading-features
+    type: ns::nsfeature
+    meta-properties:
+      action: enable
+    roles:
+      - "SSLOffloading"
+    properties:
+      feature: ["LB", "CS", "SSL", "Responder", "Rewrite"]
+  -
+    # Load Balancing vServer
+    name: lb-ssloffloading-vs
+    type: ns::lbvserver
+    roles:
+      - "SSLOffloading"
+    properties:
+      name: str("lb_vs_so_" + $parameters.general.appname + "_ssl_443")
+      ipv46: ip($parameters.ssloffloading.pip)
+      port: 443
+      servicetype: SSL
+      # maintenance page (backup vServer)
+      backupvserver: $parameters.general.maintenance
+      # method:
+      # persistency:
+      tcpprofilename?: $parameters.general.tcp-profile
+      httpprofilename?: $parameters.ssloffloading.http-profile
+    components:
+      -
+        # LB Service Group to link to the AppFW (backend) vServer
+        name: sg-ssloffloading
+        type: ns::servicegroup
+        properties:
+          servicegroupname: str("lb_sg_so_" + $parameters.general.appname + "_ssl_443")
+          servicetype: "SSL"
+          # CIP Header is always enabled and using the X-Forwarded-For header
+          cip: "ENABLED"
+          cipheader: "X-Forwarded-For"
+        components:
+          -
+            # Binding servicegroup to vserver
+            name: sg-vs-binding
+            type: ns::lbvserver_servicegroup_binding
+            properties:
+              name: $parent.parent.properties.name
+              servicegroupname: $parent.properties.servicegroupname
+          -
+            # LB server member (= appFW vServer)
+            name: sg-server
+            type: ns::server
+            properties:
+              # incorporating naming convention
+              name: str("lb_svr_af_" + $parameters.general.appname)
+              ipaddress: ip($parameters.appfw.vip)
+          -
+            # Binding server to servicegroup
+            name: sg-svr-binding
+            type: ns::servicegroup_servicegroupmember_binding
+            properties:
+              servername: $parent.components.sg-server.properties.name
+              port: 443
+              servicegroupname: $parent.properties.servicegroupname
+          -
+            # LB servicegroup monitor
+            name: sg-monitor
+            type: ns::lbmonitor
+            properties:
+              monitorname: str("lb_mon_so_" + $parameters.general.appname + "_ssl")
+              type: "HTTP-ECV"
+              secure: "YES"
+            components:
+              -
+                # Binding monitor to servicegroup
+                name: sg-mon-binding
+                type: ns::servicegroup_lbmonitor_binding
+                properties:
+                  servicegroupname: $parent.parent.properties.servicegroupname
+                  monitor_name: $parent.properties.monitorname
+      -
+        # SSL Servicegroup configuration with Backend SSL profile
+        name: sg-ssloffloading-ssl
+        type: ns::sslservicegroup
+        description: "This component configures the Backend SSL Profile for the SSL servicegroup"
+        condition: exists($parameters.general.sslprofile_be)
+        properties:
+          servicegroupname: $parent.components.sg-ssloffloading.properties.servicegroupname
+          sslprofile: $parameters.general.sslprofile_be
+      - 
+        # Binding existing certkey-pair to vServer
+        name: vs-certkey-bindings
+        type: ns::sslvserver_sslcertkey_binding 
+        description: "This component binds the existing certkey to the vserver"
+        # temp condition while certificates are not yet installed on the NetScaler instance
+        condition: exists($parameters.general.pub-certkey-pair)
+        properties: 
+          vservername: $parent.properties.name
+          certkeyname: $parameters.general.pub-certkey-pair
+      -
+        # Binding existing CSP Rewrite policy to the vServer for enhanced security
+        name: vs-csp-rewrite-binding
+        type: ns::lbvserver_rewritepolicy_binding
+        condition: exists($parameters.general.csp-rewrite-policy)
+        properties:
+          name: $parent.properties.name
+          policyname: $parameters.general.csp-rewrite-policy
+          priority: 110
+          gotopriorityexpression: "NEXT"
+          bindpoint: "RESPONSE"
+      -
+        # Binding existing HSTS Rewrite policy to the vServer for enhanced security
+        name: vs-hsts-rewrite-binding
+        type: ns::lbvserver_rewritepolicy_binding
+        condition: exists($parameters.general.hsts-rewrite-policy)
+        properties:
+          name: $parent.properties.name
+          policyname: $parameters.general.hsts-rewrite-policy
+          priority: 120
+          gotopriorityexpression: "NEXT"
+          bindpoint: "RESPONSE"
+      -
+        # Binding existing X-Frame-Options Rewrite policy to the vServer for enhanced security
+        name: vs-xframe-rewrite-binding
+        type: ns::lbvserver_rewritepolicy_binding
+        condition: exists($parameters.general.xframe-rewrite-policy)
+        properties:
+          name: $parent.properties.name
+          policyname: $parameters.general.xframe-rewrite-policy
+          priority: 130
+          gotopriorityexpression: "NEXT"
+          bindpoint: "RESPONSE"
+      -
+        # Binding existing X-XSS-Protection Rewrite policy to the vServer for enhanced security
+        name: vs-xxss-rewrite-binding
+        type: ns::lbvserver_rewritepolicy_binding
+        condition: exists($parameters.general.xxss-rewrite-policy)
+        properties:
+          name: $parent.properties.name
+          policyname: $parameters.general.xxss-rewrite-policy
+          priority: 140
+          gotopriorityexpression: "NEXT"
+          bindpoint: "RESPONSE"
+      -
+        # Binding existing X-Content-Type-Options Rewrite policy to the vServer for enhanced security
+        name: vs-xcontenttype-rewrite-binding
+        type: ns::lbvserver_rewritepolicy_binding
+        condition: exists($parameters.general.xcontenttype-rewrite-policy)
+        properties:
+          name: $parent.properties.name
+          policyname: $parameters.general.xcontenttype-rewrite-policy
+          priority: 150
+          gotopriorityexpression: "NEXT"
+          bindpoint: "RESPONSE"
+  -
+    # SSL vServer
+    name: ssl-ssloffloading-vs
+    type: ns::sslvserver
+    roles:
+      - "SSLOffloading"
+    condition: exists($parameters.general.sslprofile_fe)
+    properties:
+      vservername: str("lb_vs_so_" + $parameters.general.appname + "_ssl_443")
+      sslprofile: $parameters.general.sslprofile_fe
+  -
+    # CS vServer for HTTP to HTTPS redirection of the SSL Offloading vServer
+    name: cs-ssloffloading-vs
+    type: ns::csvserver 
+    description: "This component creates the Content Switching vServer for HTTP tp HTTPS redirection (using a global responder policy)"
+    roles:
+      - "SSLOffloading"
+    properties: 
+      name: str("cs_vs_so_" + $parameters.general.appname + "_http_80")
+      ipv46: ip($parameters.ssloffloading.pip)
+      port: 80
+      servicetype: HTTP
+  -
+    # Binding the Responder policy for HTTP redirection to the CS vServer
+    name: cs-res-httpredirect-binding
+    type: ns::csvserver_responderpolicy_binding
+    description: "This component binds the httpredirect responder policy to the CS vServer."
+    roles:
+      - "SSLOffloading"
+    properties: 
+      name: str("cs_vs_so_" + $parameters.general.appname + "_http_80")
+      policyname: $parameters.general.res_pol_http_redirect
+      priority: 100
+      gotopriorityexpression: "END"
+ 
+########################################
+##### Application Firewall section #####
+########################################
+  -
+    # enabling the required NS features
+    name: appfw-features
+    type: ns::nsfeature
+    meta-properties:
+      action: enable
+    roles:
+      - "ApplicationFirewall"
+    properties:
+      feature: ["LB", "SSL", "AppFw"]
+  -
+    # Load Balancing vServer
+    name: lb-appfw-vs
+    type: ns::lbvserver
+    roles:
+      - "ApplicationFirewall"
+    properties:
+      name: str("lb_vs_af_" + $parameters.general.appname + "_ssl_443")
+      ipv46: ip($parameters.appfw.vip)
+      port: 443
+      servicetype: SSL
+      # method:
+      # persistency:
+      tcpprofilename?: $parameters.general.tcp-profile
+      httpprofilename?: $parameters.appfw.http-profile
+    components:
+      -
+        # LB Service Group to link to the Presentation (backend) vServer
+        name: sg-appfw
+        type: ns::servicegroup
+        properties:
+          servicegroupname: str("lb_sg_af_" + $parameters.general.appname + "_ssl_443")
+          servicetype: "SSL"
+          # CIP Header is always enabled and using the X-Forwarded-For header
+          cip: "ENABLED"
+          cipheader: "X-Forwarded-For"
+        components:
+          -
+            # Binding servicegroup to vserver
+            name: sg-vs-binding
+            type: ns::lbvserver_servicegroup_binding
+            properties:
+              name: $parent.parent.properties.name
+              servicegroupname: $parent.properties.servicegroupname
+          -
+            # LB server member (= Presentation vServer)
+            name: sg-server
+            type: ns::server
+            properties:
+              # incorporating naming convention
+              name: str("lb_svr_pr_" + $parameters.general.appname)
+              ipaddress: ip($parameters.presentation.vip)
+          -
+            # Binding server to servicegroup
+            name: sg-svr-binding
+            type: ns::servicegroup_servicegroupmember_binding
+            properties:
+              servername: $parent.components.sg-server.properties.name
+              port: 443
+              servicegroupname: $parent.properties.servicegroupname
+          -
+            # LB servicegroup monitor
+            name: sg-monitor
+            type: ns::lbmonitor
+            properties:
+              monitorname: str("lb_mon_af_" + $parameters.general.appname + "_ssl")
+              type: "HTTP-ECV"
+              secure: "YES"
+            components:
+              -
+                # Binding monitor to servicegroup
+                name: sg-mon-binding
+                type: ns::servicegroup_lbmonitor_binding
+                properties:
+                  servicegroupname: $parent.parent.properties.servicegroupname
+                  monitor_name: $parent.properties.monitorname
+      -
+        # SSL Servicegroup configuration with Backend SSL profile
+        name: sg-appfw-ssl
+        type: ns::sslservicegroup
+        description: "This component configures the Backend SSL Profile for the SSL servicegroup"
+        condition: exists($parameters.general.sslprofile_be)
+        properties:
+          servicegroupname: $parent.components.sg-appfw.properties.servicegroupname
+          sslprofile: $parameters.general.sslprofile_be
+      -
+        # Binding existing Application Firewall Policy to the vServer
+        name: vs-afpol-binding
+        type: ns::lbvserver_appfwpolicy_binding
+        description: "This component binds the existing appfw policy to the vServer"
+        condition: exists($parameters.appfw.policy)
+        properties:
+          name: $parent.properties.name
+          policyname: $parameters.appfw.policy
+          priority: 110
+          gotopriorityexpression: "END"
+          bindpoint: "REQUEST"
+      - 
+        # Binding existing certkey-pair to vServer
+        name: vs-certkey-bindings
+        type: ns::sslvserver_sslcertkey_binding 
+        description: "This component binds the existing certkey to the vserver"
+        # temp condition while certificates are not yet installed on the NetScaler instance
+        condition: exists($parameters.general.int-certkey-pair)
+        properties: 
+          vservername: $parent.properties.name
+          certkeyname: $parameters.general.int-certkey-pair
+  -
+    # SSL vServer
+    name: ssl-appfw-vs
+    type: ns::sslvserver
+    roles:
+      - "ApplicationFirewall"
+    condition: exists($parameters.general.sslprofile_fe)
+    properties:
+      vservername: str("lb_vs_af_" + $parameters.general.appname + "_ssl_443")
+      sslprofile: $parameters.general.sslprofile_fe
+
+################################
+##### Presentation Section #####
+################################
+  -
+    # enabling the required NS features
+    name: presentation-features
+    type: ns::nsfeature
+    meta-properties:
+      action: enable
+    roles:
+      - "Presentation"
+    properties:
+      feature: ["LB", "SSL"]
+  -
+    # Load Balancing vServer
+    name: lb-presentation-vs
+    type: ns::lbvserver
+    roles:
+      - "Presentation"
+    properties:
+      name: str("lb_vs_pr_" + $parameters.general.appname + "_ssl_" + str($parameters.presentation.port))
+      ipv46: ip($parameters.presentation.vip)
+      port: $parameters.presentation.port
+      servicetype: SSL
+      # method:
+      # persistency:
+      tcpprofilename?: $parameters.general.tcp-profile
+      httpprofilename?: $parameters.presentation.http-profile
+    components:
+      -
+        # LB Service Group to link to the Webservers (backend) vServer (optional)
+        name: sg-presentation
+        type: ns::servicegroup
+        properties:
+          servicegroupname: str("lb_sg_pr_" + $parameters.general.appname + "_ssl_" + if-then-else(exists($parameters.presentation.webservers.tcp-port),str($parameters.presentation.webservers.tcp-port),str($parameters.presentation.port)))
+          servicetype: "SSL"
+          # CIP Header is always enabled and using the X-Forwarded-For header
+          cip: "ENABLED"
+          cipheader: "X-Forwarded-For"
+        components:
+          -
+            # Binding servicegroup to vserver
+            name: sg-vs-binding
+            type: ns::lbvserver_servicegroup_binding
+            properties:
+              name: $parent.parent.properties.name
+              servicegroupname: $parent.properties.servicegroupname
+          -
+            # LB server member (= Webserver)
+            name: sg-server
+            type: ns::server
+            condition: exists($parameters.presentation.webservers.servers)
+            repeat: $parameters.presentation.webservers.servers
+            repeat-item: webserver
+            repeat-condition: (exists($webserver.svr-ip)) and ($webserver.svr-exists == "No")
+            properties:
+              # incorporating naming convention
+              name: str("lb_svr_web_" + if-then-else(exists($webserver.svr-name),$webserver.svr-name,str($webserver.svr-ip)))
+              ipaddress: ip($webserver.svr-ip)
+          -
+            # Binding server to servicegroup
+            name: sg-svr-binding
+            type: ns::servicegroup_servicegroupmember_binding
+            condition: exists($parameters.presentation.webservers.servers)
+            repeat: $parameters.presentation.webservers.servers
+            repeat-item: webserver
+            repeat-condition: exists($webserver.svr-ip)
+            properties:
+              servername: str("lb_svr_web_" + if-then-else(exists($webserver.svr-name),$webserver.svr-name,str($webserver.svr-ip)))
+              port: if-then-else(exists($webserver.svr-port),$webserver.svr-port,$parameters.presentation.webservers.tcp-port)
+              servicegroupname: $parent.properties.servicegroupname
+          -
+            # Binding existing monitors to the Presentation ServiceGroup
+            name: sg-monitors-binding
+            type: ns::servicegroup_lbmonitor_binding
+            condition: exists($parameters.presentation.webservers.monitors)
+            repeat: $parameters.presentation.webservers.monitors
+            repeat-item: monitor
+            repeat-condition: exists($monitor)
+            properties:
+              servicegroupname: $parent.properties.servicegroupname
+              monitor_name: $monitor
+          -
+            # Creating new monitor and binding it to the Presentation ServiceGroup
+            name: sg-monitors-new
+            type: ns::lbmonitor
+            condition: exists($parameters.presentation.webservers.new-monitors)
+            repeat: $parameters.presentation.webservers.new-monitors
+            repeat-item: newmonitor
+            repeat-condition: exists($newmonitor.monitorname)
+            properties:
+              monitorname: str("lb_mon_" + $newmonitor.monitorname)
+              type: $newmonitor.type
+              destip?: $newmonitor.destip
+              destport?: $newmonitor.destport
+              httprequest?: $newmonitor.httprequest
+              send?: $newmonitor.send
+              customheaders?: $newmonitor.customheaders
+              respcode?: $newmonitor.respcode
+              recv?: $newmonitor.recv
+              #lrtm?: $newmonitor.lrtm
+              lrtm: if-then-else($newmonitor.lrtm,"ENABLED","DISABLED")
+              secure: str($newmonitor.secure)
+            components:
+              -
+                name: sg-new-monitors-binding
+                type: ns::servicegroup_lbmonitor_binding
+                properties:
+                  servicegroupname: $parent.parent.properties.servicegroupname
+                  monitor_name: $parent.properties.monitorname
+      -
+        # SSL Servicegroup configuration with Backend SSL profile
+        name: sg-presentation-ssl
+        type: ns::sslservicegroup
+        description: "This component configures the Backend SSL Profile for the SSL servicegroup"
+        condition: exists($parameters.general.sslprofile_be)
+        properties:
+          servicegroupname: $parent.components.sg-presentation.properties.servicegroupname
+          sslprofile: $parameters.general.sslprofile_be
+      - 
+        # Binding existing certkey-pair to vServer
+        name: vs-certkey-bindings
+        type: ns::sslvserver_sslcertkey_binding 
+        description: "This component binds the existing certkey to the vserver"
+        # temp condition while certificates are not yet installed on the NetScaler instance
+        condition: exists($parameters.general.int-certkey-pair)
+        properties: 
+          vservername: $parent.properties.name
+          certkeyname: $parameters.general.int-certkey-pair
+  -
+    # SSL vServer
+    name: ssl-presentation-vs
+    type: ns::sslvserver
+    roles:
+      - "Presentation"
+    condition: exists($parameters.general.sslprofile_fe)
+    properties:
+      vservername: str("lb_vs_pr_" + $parameters.general.appname + "_ssl_" + str($parameters.presentation.port))
+      sslprofile: $parameters.general.sslprofile_fe
+
+##########################################
+##### Application Section (optional) #####
+##########################################
+  -
+    # enabling the required NS features
+    name: application-features
+    type: ns::nsfeature
+    condition: exists($parameters.application)
+    meta-properties:
+      action: enable
+    roles:
+      - "Application"
+    properties:
+      feature: ["LB", "SSL"]
+  -
+    # Load Balancing vServer
+    name: lb-application-vs
+    type: ns::lbvserver
+    condition: exists($parameters.application)
+    roles:
+      - "Application"
+    properties:
+      name: str("lb_vs_ap_" + $parameters.general.appname + "_ssl_" + str($parameters.application.port))
+      ipv46: ip($parameters.application.vip)
+      port: $parameters.application.port
+      servicetype: SSL
+      # method:
+      # persistency:
+      tcpprofilename?: $parameters.general.tcp-profile
+      httpprofilename?: $parameters.application.http-profile
+    components:
+      -
+        # LB Service Group to link to the Appl servers (backend) vServer (optional)
+        name: sg-application
+        type: ns::servicegroup
+        properties:
+          servicegroupname: str("lb_sg_ap_" + $parameters.general.appname + "_ssl_" + if-then-else(exists($parameters.application.appservers.tcp-port),str($parameters.application.appservers.tcp-port),str($parameters.application.port)))
+          servicetype: "SSL"
+        components:
+          -
+            # Binding servicegroup to vserver
+            name: sg-vs-binding
+            type: ns::lbvserver_servicegroup_binding
+            properties:
+              name: $parent.parent.properties.name
+              servicegroupname: $parent.properties.servicegroupname
+          -
+            # LB server member (= Appl server)
+            name: sg-server
+            type: ns::server
+            condition: exists($parameters.application.appservers.servers)
+            repeat: $parameters.application.appservers.servers
+            repeat-item: appserver
+            repeat-condition: (exists($appserver.svr-ip)) and ($appserver.svr-exists == "No")
+            properties:
+              # incorporating naming convention
+              name: str("lb_svr_app_" + if-then-else(exists($appserver.svr-name),$appserver.svr-name,str($appserver.svr-ip)))
+              ipaddress: ip($appserver.svr-ip)
+          -
+            # Binding server to servicegroup
+            name: sg-svr-binding
+            type: ns::servicegroup_servicegroupmember_binding
+            condition: exists($parameters.application.appservers.servers)
+            repeat: $parameters.application.appservers.servers
+            repeat-item: appserver
+            repeat-condition: exists($appserver.svr-ip)
+            properties:
+              servername: str("lb_svr_app_" + if-then-else(exists($appserver.svr-name),$appserver.svr-name,str($appserver.svr-ip)))
+              port: if-then-else(exists($appserver.svr-port),$appserver.svr-port,$parameters.application.appservers.tcp-port)
+              servicegroupname: $parent.properties.servicegroupname
+          -
+            # Binding existing monitors to the Application ServiceGroup
+            name: sg-monitors-binding
+            type: ns::servicegroup_lbmonitor_binding
+            condition: exists($parameters.application.appservers.monitors)
+            repeat: $parameters.application.appservers.monitors
+            repeat-item: monitor
+            repeat-condition: exists($monitor)
+            properties:
+              servicegroupname: $parent.properties.servicegroupname
+              monitor_name: $monitor
+          -
+            # Creating new monitor and binding it to the Presentation ServiceGroup
+            name: sg-monitors-new
+            type: ns::lbmonitor
+            condition: exists($parameters.application.appservers.new-monitors)
+            repeat: $parameters.application.appservers.new-monitors
+            repeat-item: newmonitor
+            repeat-condition: exists($newmonitor.monitorname)
+            properties:
+              monitorname: str("lb_mon_" + $newmonitor.monitorname)
+              type: $newmonitor.type
+              destip?: $newmonitor.destip
+              destport?: $newmonitor.destport
+              httprequest?: $newmonitor.httprequest
+              send?: $newmonitor.send
+              customheaders?: $newmonitor.customheaders
+              respcode?: $newmonitor.respcode
+              recv?: $newmonitor.recv
+              lrtm?: $newmonitor.lrtm
+              secure: str($newmonitor.secure)
+            components:
+              -
+                name: sg-new-monitors-binding
+                type: ns::servicegroup_lbmonitor_binding
+                properties:
+                  servicegroupname: $parent.parent.properties.servicegroupname
+                  monitor_name: $parent.properties.monitorname
+      -
+        # SSL Servicegroup configuration with Backend SSL profile
+        name: sg-application-ssl
+        type: ns::sslservicegroup
+        description: "This component configures the Backend SSL Profile for the SSL servicegroup"
+        condition: exists($parameters.general.sslprofile_be)
+        properties:
+          servicegroupname: $parent.components.sg-application.properties.servicegroupname
+          sslprofile: $parameters.general.sslprofile_be
+      - 
+        # Binding existing certkey-pair to vServer
+        name: vs-certkey-bindings
+        type: ns::sslvserver_sslcertkey_binding 
+        description: "This component binds the existing certkey to the vserver"
+        # temp condition while certificates are not yet installed on the NetScaler instance
+        condition: exists($parameters.general.int-certkey-pair)
+        properties: 
+          vservername: $parent.properties.name
+          certkeyname: $parameters.general.int-certkey-pair
+  -
+    # SSL vServer
+    name: ssl-application-vs
+    type: ns::sslvserver
+    condition: "exists($parameters.application) and exists($parameters.general.sslprofile_fe)"
+    roles:
+      - "Application"
+    properties:
+      vservername: str("lb_vs_ap_" + $parameters.general.appname + "_ssl_" + str($parameters.application.port))
+      sslprofile: $parameters.general.sslprofile_fe
+
+
+outputs:
+ -
+  name: lb-ssloffloading-vs
+  description: "The created Load Balancing vServer for SSL Offloading"
+  value: $components.lb-ssloffloading-vs
+ -
+  name: lb-appfw-vs
+  description: "The created Load Balancing vServer for Application Firewall"
+  value: $components.lb-appfw-vs
+ -
+  name: lb-presentation-vs
+  description: "The created Load Balancing vServer for Presentation"
+  value: $components.lb-presentation-vs
+ -
+  name: lb-application-vs
+  description: "The created Load Balancing vServer for Application"
+  value: $components.lb-application-vs
+
+
+  

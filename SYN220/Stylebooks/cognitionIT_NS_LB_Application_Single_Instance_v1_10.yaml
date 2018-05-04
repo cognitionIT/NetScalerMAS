@@ -1,0 +1,498 @@
+--- 
+name: cit-sb-lb-vserver
+namespace: com.cognitionit.mas.stylebooks
+version: "1.10"
+description: "This stylebook creates a Load Balancing Application (VServer), based upon best practices and field experiences"
+display-name: "Synergy 2018 Stylebook - Create Load Balancing Application (VServer)"
+schema-version: "1.0"
+author: "Esther Barthel, MSc"
+
+# Notes:
+
+import-stylebooks:
+  -
+    namespace: netscaler.nitro.config
+    prefix: ns
+    # The NetScaler version cannot exceed the minimum version of the current NetScaler version of the targeted instances
+    version: "12.0"
+
+parameters:
+  -
+    ##################
+    # Load Balancing #
+    ##################
+    name: lb
+    type: object
+    label: "Load Balancing configuration"
+    description: "Configuration input for the Load Balancing vServer"
+    required: true
+    parameters:
+      -
+        # Load Balancing - Application name
+        name: appname
+        type: string
+        label: "Application name"
+        description: "Name of the Application. Naming conventions are automatically added to the NetScaler configuration."
+        # Parameter to push a name for the Configuration Pack and use that for future references
+        key: true
+        required: true
+        # default added for testing purposes, remove after POC
+        default: "Synergy18-LB-Demo"
+      -
+        # Load Balancing - Virtual IP-address
+        name: vip
+        type: ipaddress
+        label: "Virtual IP-address"
+        description: "Virtual IP-address of the Load Balancing vServer"
+        required: true
+      -
+        # Load Balancing - Protocol
+        name: protocol
+        type: string
+        label: "Protocol"
+        description: "Protocol of the Load Balancing vServer"
+        required: true
+        allowed-values:
+          - "HTTP"
+          - "SSL"
+          - "TCP"
+          - "SSL_TCP"
+          - "UDP"
+        default: "SSL"
+      -
+        # Load Balancing - Virtual Port
+        name: port
+        type: tcp-port
+        label: "TCP Port"
+        description: "TCP port of the Presentation vServer"
+        required: true
+        default: 443
+      -
+        # General input - SSL Profile Frontend (hidden in GUI)
+        name: sslprofile_fe
+        type: string
+        label: "Frontend SSL Profile name"
+        description: "Name of the SSL profile to bind to all the SSL vServers on the NetScaler instances"
+        default: "ns_default_ssl_profile_frontend"
+        gui:
+          hidden: true
+      -
+        # Load Balancing - Persistence
+        name: persistence
+        type: object
+        label: "Persistence settings"
+        description: "Persistence settings for this Load Balancing vServer"
+        parameters:
+          -
+            name: type
+            type: string
+            label: "Persistence Type"
+            description: "Persistence type of the Load Balancing vServer"
+            required: true
+            allowed-values:
+              - "NONE"
+              - "SOURCEIP"
+              - "COOKIEINSERT"
+              - "SSLSESSION"
+              - "DESTIP"
+              - "SRCIPDESTIP"
+            default: "NONE"
+          -
+            name: timeout
+            type: number
+            label: "timeout"
+            description: "Persistence timeout value"
+            max-value: 1440
+            default: 2
+          -
+            name: backup
+            type: string
+            label: "Backup Persistence type"
+            description: "Backup Persistence type value"
+            allowed-values:
+              - "NONE"
+              - "SOURCEIP"
+          -
+            name: backuptimeout
+            type: number
+            label: "Backup Persistence timeout"
+            description: "Backup persistence timeout value"
+            max-value: 1440
+      -
+        # Load Balancing vServer profiles
+        name: profiles
+        type: object
+        label: "vServer Profiles"
+        description: "Advanced configuration for Profiles to be bound to the vServer"
+        gui:
+          collapse_pane: true
+        parameters:
+          -
+            # General input - TCP profile name (optional)
+            name: tcp-profile
+            type: string
+            label: "TCP Profile name"
+            description: "Name of the TCP profile to use for the Application"
+            required: false
+          -
+            # Load Balancing - HTTP Profile
+            name: http-profile
+            type: string
+            label: "HTTP Profile"
+            description: "HTTP Profile to bind to the Presentation vServer"
+            required: true
+            allowed-values:
+              - "nshttp_default_strict_validation"
+              - "nshttp_default_profile"
+            default: "nshttp_default_profile"
+      -
+        # General - Certificate (internal)
+        name: int-certkey-pair
+        type: string
+        label: "Certificate-Key Pair name"
+        description: "Certificate-Key Pair to bind to the Application vServer"
+        # temp changed to false, while certificates are not yet installed on the NetScaler
+        required: false
+      -
+        # Load Balancing - Backend servers
+        name: servicegroup
+        type: object
+        label: "Backend servers configuration"
+        description: "Backend servers configuration"
+        required: true
+        parameters:
+          -
+            # server - Protocol
+            name: protocol
+            type: string
+            label: "Protocol for the servicegroup"
+            description: "Specify the protocol of the servicegroup."
+            allowed-values:
+              - "HTTP"
+              - "SSL"
+              - "TCP"
+              - "SSL_TCP"
+              - "UDP"
+            default: "SSL"
+            required: true
+          -
+            # server - TCP port
+            name: port
+            type: tcp-port
+            label: "TCP port for the servicegroup"
+            description: "Specify the standard port of the servicegroup."
+            default: 443
+            required: true
+          -
+            name: servers
+            type: object[]
+            label: "Backend servers"
+            description: "Backup servers information"
+            parameters:
+              -
+                name: name
+                label: "Server Name"
+                description: "Name of the server"
+                type: string
+              -
+                name: ip
+                label: "Server IP-address"
+                description: "IP-address of the server"
+                type: ipaddress
+                required: true
+              -
+                name: port
+                label: "Server TCP port"
+                description: "TCP port of the server"
+                type: tcp-port
+          -
+            # ServiceGroup - SSL Profile Backend (hidden in GUI)
+            name: sslprofile_be
+            type: string
+            label: "Backend SSL Profile name"
+            description: "Name of the SSL profile to bind to all the SSL ServiceGroups on the NetScaler instances"
+            default: "ns_default_ssl_profile_backend"
+            gui:
+              hidden: true
+          -
+            # ServiceGroup - Input param for the existing monitors to be bound to the servicegroup
+            name: monitors
+            label: "Bind existing Monitor(s) Name"
+            description: "Specify existing monitor(s) to bind to this ServiceGroup"
+            type: string[]
+            required: false
+          - 
+            # ServiceGroup - Input param for the new monitors to be bound to the servicegroup
+            name: new-monitors
+            label: "Add new Monitor(s) (optional)"
+            description: "Create new monitor(s) to bind to the ServiceGroup."
+            type: object[]
+            required: false
+            gui:
+              collapse_pane: true
+              columns: 6
+            parameters:
+              -
+                name: name
+                label: "Monitor Name"
+                description: "Name of the monitor"
+                type: string
+                required: true
+              -
+                name: type
+                label: "Monitor Type"
+                description: "Select the monitor type from the selectbox"
+                type: string
+                required: true
+                allowed-values:
+                  - "PING"
+                  - "TCP"
+                  - "HTTP"
+                  - "TCP-ECV"
+                  - "HTTP-ECV"
+                  - "UDP-ECV"
+              -
+                name: interval
+                label: "Interval (seconds)"
+                description: "Time interval between two successive probes. Must be greater than the value of Response Time-out."
+                type: number
+                default: 5
+              -
+                name: resptimeout
+                label: "Response Time-out (seconds)"
+                description: "Amount of time for which the appliance must wait before it marks a probe as FAILED. Must be less than the value specified for the interval parameter."
+                type: number
+                default: 2
+              -
+                name: downtime
+                label: "Downtime (seconds)"
+                description: "Time duration for which to wait before probing a service that has been marked as down."
+                type: number
+                default: 30
+              -
+                name: destip
+                label: "Destination IP"
+                description: "Destination IP to be monitored"
+                type: ipaddress
+              -
+                name: destport
+                label: "Destination Port"
+                description: "Destination Port to be monitored"
+                type: tcp-port
+              -
+                name: retries
+                label: "Retries"
+                description: "Maximum number of probes to send to establish the state of the service for which the monitoring probe failed."
+                type: number
+                default: 3
+              -
+                name: successretries
+                label: "Success retries"
+                description: "Number of consecutive successful probes required to transition a services state from DWON to UP."
+                type: number
+                default: 1
+              -
+                name: secure
+                label: "Enable Secure mode for the monitor"
+                description: "Uses HTTPS for sending monitoring probes."
+                type: boolean
+                default: true
+                required: true
+              -
+                name: sslprofile
+                label: "SSL Profile"
+                description: "SSL profile associated with the monitor."
+                type: string
+                min-length: 1
+                max-length: 127
+              -
+                name: http-specialparams
+                label: "HTTP special parameters"
+                description: "Special parameters for the HTTP monitor type."
+                type: object
+                gui:
+                  collapse_pane: true
+                parameters:
+                  -
+                    name: httprequest
+                    label: "HTTP Request"
+                    description: "HTTP Request to be send by the monitor"
+                    type: string
+                  -
+                    name: respcode
+                    label: "List of HTTP Status Response Code(s)"
+                    description: "Expected HTTP Status Response Code(s) returned to the monitor"
+                    type: string[]
+                  -
+                    name: customheaders
+                    label: "Custom HTTP Headers"
+                    description: "custom HTTP Headers to be send in monitor probe requests"
+                    type: string
+              -
+                name: ecv-specialparams
+                label: "ECV special parameters"
+                description: "Special parameters for the ECV monitor types."
+                type: object
+                gui:
+                  collapse_pane: true
+                parameters:
+                  -
+                    name: send
+                    label: "Send string"
+                    description: "String to be send by the ECV monitor"
+                    type: string
+                  -
+                    name: recv
+                    label: "Expected response"
+                    description: "Expected HTTP Response returned to the monitor"
+                    type: string
+
+components:
+  ##################################
+  ##### Load Balancing Section #####
+  ##################################
+  -
+    # enabling the required NS features
+    name: lb-features
+    type: ns::nsfeature
+    meta-properties:
+      action: enable
+    properties:
+      feature: ["LB", "SSL"]
+  -
+    # Load Balancing vServer
+    name: lb-vs
+    type: ns::lbvserver
+    properties:
+      name: str("lb_vs_" + $parameters.lb.appname + "_" + $parameters.lb.protocol + "_" + str($parameters.lb.port))
+      ipv46: ip($parameters.lb.vip)
+      port: $parameters.lb.port
+      servicetype: $parameters.lb.protocol
+      persistencetype?: $parameters.lb.persistence.type
+      timeout?: $parameters.lb.persistence.timeout
+      persistencebackup?: $parameters.lb.persistence.backup
+      backuppersistencetimeout?: $parameters.lb.persistence.backuptimeout
+      tcpprofilename?: $parameters.lb.profiles.tcp-profile
+      httpprofilename?: if-then-else(($parameters.lb.protocol == "HTTP") or ($parameters.lb.protocol == "SSL"),$parameters.lb.profiles.http-profile)
+    components:
+      -
+        # LB Service Group to link to the vServer
+        name: lb-sg
+        type: ns::servicegroup
+        properties:
+          servicegroupname: str("lb_sg_" + $parameters.lb.appname + "_" + $parameters.lb.servicegroup.protocol + "_" + str($parameters.lb.servicegroup.port))
+          servicetype: $parameters.lb.servicegroup.protocol
+        components:
+          -
+            # Binding servicegroup to vserver
+            name: sg-vs-binding
+            type: ns::lbvserver_servicegroup_binding
+            properties:
+              name: $parent.parent.properties.name
+              servicegroupname: $parent.properties.servicegroupname
+          -
+            # LB server member (= server)
+            name: sg-server
+            type: ns::server
+            condition: exists($parameters.lb.servicegroup.servers)
+            repeat: $parameters.lb.servicegroup.servers
+            repeat-item: server
+            repeat-condition: exists($server.ip)
+            properties:
+              # incorporating naming convention
+              name: str("lb_svr_" + if-then-else(exists($server.name),$server.name,str($server.ip)))
+              ipaddress: ip($server.ip)
+          -
+            # Binding server to servicegroup
+            name: sg-svr-binding
+            type: ns::servicegroup_servicegroupmember_binding
+            condition: exists($parameters.lb.servicegroup.servers)
+            repeat: $parameters.lb.servicegroup.servers
+            repeat-item: server
+            repeat-condition: exists($server.ip)
+            properties:
+              servername: str("lb_svr_" + if-then-else(exists($server.name),$server.name,str($server.ip)))
+              port: if-then-else(exists($server.port),$server.port,$parameters.lb.servicegroup.port)
+              servicegroupname: $parent.properties.servicegroupname
+          -
+            # Binding existing monitors to the Load Balancing ServiceGroup
+            name: sg-monitors-binding
+            type: ns::servicegroup_lbmonitor_binding
+            condition: exists($parameters.lb.servicegroup.monitors)
+            repeat: $parameters.lb.servicegroup.monitors
+            repeat-item: monitor
+            repeat-condition: exists($monitor)
+            properties:
+              servicegroupname: $parent.properties.servicegroupname
+              monitor_name: $monitor
+          -
+            # Creating new monitor and binding it to the Load Balancing ServiceGroup
+            name: sg-monitors-new
+            type: ns::lbmonitor
+            condition: exists($parameters.lb.servicegroup.new-monitors)
+            repeat: $parameters.lb.servicegroup.new-monitors
+            repeat-item: newmonitor
+            repeat-condition: exists($newmonitor.name)
+            properties:
+              monitorname: str("lb_mon_" + $newmonitor.name)
+              type: $newmonitor.type
+              interval?: $newmonitor.interval
+              resptimeout?: $newmonitor.resptimeout
+              downtime?: $newmonitor.downtime
+              destip?: $newmonitor.destip
+              destport?: $newmonitor.destport
+              retries?: $newmonitor.retries
+              successretries?: $newmonitor.successretries
+              secure: if-then-else($newmonitor.secure, "YES", "NO")
+              sslprofile?: $newmonitor.sslprofile
+              # HTTP special parameters
+              httprequest?: if-then-else((("HTTP" in $newmonitor.type) and ($newmonitor.type != "HTTP-ECV")),$newmonitor.http-specialparams.httprequest)
+              respcode?: if-then-else((("HTTP" in $newmonitor.type) and ($newmonitor.type != "HTTP-ECV")),$newmonitor.http-specialparams.respcode)
+              customheaders?: if-then-else("HTTP" in $newmonitor.type,str($newmonitor.http-specialparams.customheaders))
+              # ECV special parameters
+              send?: if-then-else("ECV" in $newmonitor.type,$newmonitor.ecv-specialparams.send)
+              recv?: if-then-else("ECV" in $newmonitor.type,$newmonitor.ecv-specialparams.recv)
+            components:
+              -
+                name: sg-new-monitors-binding
+                type: ns::servicegroup_lbmonitor_binding
+                properties:
+                  servicegroupname: $parent.parent.properties.servicegroupname
+                  monitor_name: $parent.properties.monitorname
+      -
+        # SSL ServiceGroup configuration with Backend SSL profile
+        name: sg-presentation-ssl
+        type: ns::sslservicegroup
+        description: "This component configures the Backend SSL Profile for the SSL servicegroup"
+        # Create extra condition that the ServiceGroup protocol is SSL (or TCP-SSL?)
+        condition: exists($parameters.lb.servicegroup.sslprofile_be) and ($parameters.lb.servicegroup.protocol == "SSL" or $parameters.lb.servicegroup.protocol == "SSL_TCP")
+        properties:
+          servicegroupname: $parent.components.lb-sg.properties.servicegroupname
+          sslprofile: $parameters.lb.servicegroup.sslprofile_be
+      - 
+        # Binding existing certkey-pair to vServer
+        name: vs-certkey-bindings
+        type: ns::sslvserver_sslcertkey_binding 
+        description: "This component binds the existing certkey to the vserver"
+        # add extra condition that the vServer protocol is SSL
+        # temp condition while certificates are not yet installed on the NetScaler instance
+        condition: exists($parameters.lb.int-certkey-pair) and ($parameters.lb.protocol == "SSL" or $parameters.lb.protocol == "SSL_TCP")
+        properties: 
+          vservername: $parent.properties.name
+          certkeyname: $parameters.lb.int-certkey-pair
+  -
+    # SSL vServer
+    name: ssl-lb-vs
+    type: ns::sslvserver
+    # add condition that the vServer protocol is SSL
+    condition: exists($parameters.lb.sslprofile_fe) and ($parameters.lb.protocol == "SSL" or $parameters.lb.protocol == "SSL_TCP")
+    properties:
+      vservername: str("lb_vs_" + $parameters.lb.appname + "_" + $parameters.lb.protocol + "_" + str($parameters.lb.port))
+      sslprofile: $parameters.lb.sslprofile_fe
+
+
+outputs:
+ -
+  name: lb-vs
+  description: "The created Load Balancing vServer"
+  value: $components.lb-vs

@@ -1,0 +1,112 @@
+--- 
+name: cit-sb-upload-certkeys-rest
+namespace: com.cognitionit.mas.stylebooks
+version: "1.3"
+display-name: "Synergy 2018 Stylebook - Upload Certificate-Key Pairs (REST API)"
+description: "This StyleBook uploads certificate and key file to the NetScaler and creates the corresponding CertKey pair (REST API)."
+schema-version: "1.0"
+author: "Esther Barthel, MSc"
+import-stylebooks: 
+  - 
+    namespace: netscaler.nitro.config
+    prefix: ns
+    version: "12.0"
+  - 
+    namespace: com.cognitionit.mas.commontypes
+    prefix: cittypes
+    version: "1.0"
+parameters: 
+  - 
+    name: certkey-pair
+    label: Certificate
+    description: "List of certificates to be bound to this virtual load balanced application"
+    type: cittypes::cit-ct-certkey-rest-params[]
+    required: true
+components: 
+  - 
+    name: pem-cert-files-comp
+    type: ns::systemfile
+    description: "This list of components upload the PEM certificate files onto the NetScaler device."
+    repeat: $parameters.certkey-pair
+    repeat-condition: "$certificate.ssl-inform == \"PEM\""
+    repeat-item: certificate
+    properties: 
+      filename: $certificate.cert-file-name
+      filelocation: "/nsconfig/ssl"
+      filecontent: str($certificate.cert-file-content)
+      fileencoding: "BASE64"
+  - 
+    name: pfx-cert-files-comp
+    type: ns::systemfile
+    description: "This list of components upload the PFX certificate files onto the NetScaler device."
+    repeat: $parameters.certkey-pair
+    repeat-condition: "$certificate.ssl-inform == \"PFX\""
+    repeat-item: certificate
+    properties: 
+      filename: $certificate.cert-file-name
+      filelocation: "/nsconfig/ssl"
+      filecontent: str($certificate.cert-file-content)
+      fileencoding: "BASE64"
+  - 
+    name: der-cert-files-comp
+    type: ns::systemfile
+    description: "This list of components upload the DER certificate files onto the NetScaler device."
+    repeat: $parameters.certkey-pair
+    repeat-condition: "$certificate.ssl-inform == \"DER\""
+    repeat-item: certificate
+    properties: 
+      filename: $certificate.cert-file-name
+      filelocation: "/nsconfig/ssl"
+      filecontent: str($certificate.cert-file-content)
+      fileencoding: "BASE64"
+  - 
+    name: key-files-comp
+    type: ns::systemfile  
+    condition: "$components.pem-cert-files-comp or $components.der-cert-files-comp"
+    description: "This list of components upload the key files onto the NetScaler device."
+    repeat: $parameters.certkey-pair
+    repeat-condition: "$certificate.key-file-content and not $certificate.cert-advanced.is-ca-cert"
+    repeat-item: certificate
+    properties: 
+      filename: $certificate.key-file-name
+      filelocation: "/nsconfig/ssl"
+      filecontent: str($certificate.key-file-content)
+      fileencoding: "BASE64"
+  - 
+    name: certkeys-comp
+    type: ns::sslcertkey
+    description: "This list of components create certkey entities on the NetScaler device."
+    condition: $components.der-cert-files-comp or $components.pem-cert-files-comp or $components.pfx-cert-files-comp
+    repeat: $parameters.certkey-pair
+    repeat-item: certificate
+    repeat-condition: not $certificate.cert-advanced.is-ca-cert
+    properties: 
+      certkey: $certificate.certkey-name
+      cert: $certificate.cert-file-name
+      key?: $certificate.key-file-name
+      inform: $certificate.ssl-inform
+      expirymonitor?: $certificate.cert-advanced.expiry-monitor
+      notificationperiod?: $certificate.cert-advanced.notification-period
+      passplain?: $certificate.cert-password
+  - 
+    name: certkeys-ca-comp
+    type: ns::sslcertkey
+    description: "This list of components create CA certkey entities on the NetScaler device."
+    condition: $components.der-cert-files-comp or $components.pem-cert-files-comp
+    repeat: $parameters.certkey-pair
+    repeat-item: certificate
+    repeat-condition: $certificate.cert-advanced.is-ca-cert
+    properties: 
+      certkey: $certificate.certkey-name
+      cert: $certificate.cert-file-name
+      inform: $certificate.ssl-inform
+      expirymonitor?: $certificate.cert-advanced.expiry-monitor
+      notificationperiod?: $certificate.cert-advanced.notification-period
+
+outputs:
+  -
+    name: certkeys
+    value: $components.certkeys-comp
+
+  - name: ca-certkeys
+    value: $components.certkeys-ca-comp
