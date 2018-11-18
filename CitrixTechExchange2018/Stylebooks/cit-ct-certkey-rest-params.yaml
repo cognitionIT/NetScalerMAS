@@ -1,0 +1,105 @@
+--- 
+name: cit-ct-certkey-rest-params
+namespace: com.cognitionit.mas.commontypes
+version: "1.0"
+display-name: "NS Certificate and Key pair (REST API)"
+description: "This StyleBook defines a certificate-key pair on the NetScaler, including the upload of the required cert & key files (REST API)."
+private: true
+schema-version: "1.0"
+author: "Esther Barthel, MSc"
+parameters: 
+  - 
+    name: certkey-name
+    label: "CertKey Pair Name"
+    description: "Certificate-Key Pair Name"
+    type: string
+    gui:
+      updatable: false
+    key: true
+    required: true
+  -
+    name: cert-file-name
+    type: string
+    label: "Certificate File Name"
+    description: "Name of the certificate file (including extension)"
+    gui:
+      updatable: false
+    required: true
+  -
+    name: cert-file-content
+    type: string
+    label: "Certificate File content (Base64 encoded)"
+    description: "Certificate File content as a BASE64 encoded string"
+    required: true
+  - 
+    name: ssl-inform 
+    label: "CertKey Format"    
+    description: "Input format of the certificate and the private-key files."  
+    type: string    
+    default: PEM
+    required: true
+    allowed-values: 
+      - PEM
+      - DER
+      - PFX
+  -
+    name: key-file-name
+    type: string
+    label: "Key File name"
+    description: "Name of the key file (including extension)"
+    required: false
+  -
+    name: key-file-content
+    type: string
+    label: "Key File content (Base64 encoded)"
+    description: "Key File content as a BASE64 encoded string"
+    required: false
+  - 
+    name: cert-password
+    label: "Private Key Password"
+    description: "Passphrase that was used to encrypt the private-key. Use this option to load encrypted private-keys in PEM format."
+    type: password
+  - 
+    name: cert-advanced
+    label: "Advanced Certificate Settings"
+    description: "Advanced certificate settings"
+    type: object
+    gui: 
+      collapse_pane: true
+      columns: 1
+    parameters: 
+      - 
+        name: expiry-monitor
+        label: "Certificate Expiry Monitor"
+        description: "Issue an alert when the certificate is about to expire."
+        type: string
+        allowed-values: 
+          - DISABLED
+          - ENABLED
+      - 
+        name: notification-period
+        label: "Certificate Expiry Notfication Period"
+        description: "Time, in number of days, before certificate expiration, at which to generate an alert that the certificate is about to expire."
+        type: number
+        min-value: 10
+        max-value: 100
+      - 
+        name: is-ca-cert
+        label: "Is a CA Certificate"
+        description: "True if this is a CA certificate"
+        type: boolean
+        default: false
+      - 
+        name: skip-ca-name
+        label: "Skip CA Name"
+        description: "Skip the CA name"
+        type: boolean
+        default: false
+      - 
+        name: ocsp-check
+        label: "OCSP Check"
+        description: "Enable Certificate OCSP validation check"
+        type: string
+        allowed-values:
+          - Optional
+          - Mandatory
